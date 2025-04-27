@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,36 +9,159 @@ import {
 import { styles } from "./styles";
 
 export default function CalculadoraScreen() {
-  const [displayValue, setDisplayValue] = useState("0");
-  const [previousValue, setPreviousValue] = useState("");
+  const [displayValue, setDisplayValue] = useState<string>("0");
+  const [previousValue, setPreviousValue] = useState<string>("");
+  const [operation, setOperation] = useState<string | null>(null);
+  const [previousNumber, setPreviousNumber] = useState<number | null>(null);
+  const [waitingForOperand, setWaitingForOperand] = useState<boolean>(false);
 
-  // Placeholder para o manipulador de pressão de botão
+  // Formata o número para exibição, limitando casas decimais e tratando números grandes
+  const formatDisplayNumber = (value: string): string => {
+    // Verifica se é um número inválido
+    if (value === "NaN" || value === "Infinity" || value === "-Infinity") {
+      return "Erro";
+    }
+
+    let number = parseFloat(value);
+
+    // Verifica se o número é muito grande para exibição
+    if (Math.abs(number) > 999999999) {
+      return number.toExponential(2);
+    }
+
+    // Formata o número, removendo zeros à direita em números decimais
+    const formattedValue = value.includes(".")
+      ? parseFloat(value).toString()
+      : value;
+
+    // Limita o tamanho para caber na tela
+    return formattedValue.length > 10 ? number.toPrecision(9) : formattedValue;
+  };
+
+  // Manipulador de pressão de botão
   const handleButtonPress = (value: string) => {
-    // Este é apenas um espaço reservado - a implementação real lidaria com operações da calculadora
-    if (displayValue === "0") {
+    // Se estamos esperando um novo operando, limpa o display
+    if (waitingForOperand) {
       setDisplayValue(value);
+      setWaitingForOperand(false);
+      return;
+    }
+
+    // Tratamento do botão +/-
+    if (value === "+/-") {
+      setDisplayValue((parseFloat(displayValue) * -1).toString());
+      return;
+    }
+
+    // Tratamento do botão %
+    if (value === "%") {
+      const result = parseFloat(displayValue) / 100;
+      setDisplayValue(formatDisplayNumber(result.toString()));
+      return;
+    }
+
+    // Impede múltiplos pontos decimais
+    if (value === "." && displayValue.includes(".")) {
+      return;
+    }
+
+    if (displayValue === "0" || displayValue === "Erro") {
+      // Substitui o zero inicial ou mensagem de erro
+      setDisplayValue(value === "." ? "0." : value);
     } else {
+      // Concatena o valor pressionado
       setDisplayValue(displayValue + value);
     }
   };
 
-  // Placeholder para o manipulador de operação
-  const handleOperation = (operation: string) => {
-    setPreviousValue(displayValue + " " + operation);
-    setDisplayValue("0");
+  // Manipulador de operação
+  const handleOperation = (op: string) => {
+    // Verificar se temos um erro
+    if (displayValue === "Erro") {
+      handleClear();
+      return;
+    }
+
+    const currentNumber = parseFloat(displayValue);
+
+    if (previousNumber === null) {
+      // Primeiro número da operação
+      setPreviousNumber(currentNumber);
+    } else if (operation && !waitingForOperand) {
+      // Já temos um número anterior e uma operação, realizar cálculo
+      const result = performCalculation(
+        previousNumber,
+        currentNumber,
+        operation
+      );
+      setPreviousNumber(result);
+      setDisplayValue(formatDisplayNumber(result.toString()));
+    }
+
+    // Configura para a próxima operação
+    setOperation(op);
+    setPreviousValue(
+      `${previousNumber !== null ? previousNumber : currentNumber} ${op}`
+    );
+    setWaitingForOperand(true);
   };
 
-  // Placeholder para o manipulador de igualdade
+  // Função auxiliar para realizar os cálculos
+  const performCalculation = (
+    num1: number,
+    num2: number,
+    op: string
+  ): number => {
+    switch (op) {
+      case "+":
+        return num1 + num2;
+      case "-":
+        return num1 - num2;
+      case "×":
+        return num1 * num2;
+      case "÷":
+        return num2 !== 0 ? num1 / num2 : NaN; // Retorna NaN para divisão por zero
+      default:
+        return num2;
+    }
+  };
+
+  // Manipulador de igualdade
   const handleEquals = () => {
-    // Implementaria a lógica de cálculo real aqui
-    setPreviousValue(previousValue + " " + displayValue + " =");
-    setDisplayValue("0");
+    // Verificar se temos um erro
+    if (displayValue === "Erro") {
+      handleClear();
+      return;
+    }
+
+    const currentNumber = parseFloat(displayValue);
+
+    if (previousNumber !== null && operation) {
+      // Realiza o cálculo
+      const result = performCalculation(
+        previousNumber,
+        currentNumber,
+        operation
+      );
+
+      // Atualiza o histórico e o display
+      setPreviousValue(`${previousNumber} ${operation} ${currentNumber} =`);
+      setDisplayValue(formatDisplayNumber(result.toString()));
+
+      // Reseta o estado para uma nova operação
+      setPreviousNumber(null);
+      setOperation(null);
+      setWaitingForOperand(true);
+    }
   };
 
-  // Placeholder para o manipulador de limpeza
+  // Manipulador de limpeza
   const handleClear = () => {
     setDisplayValue("0");
     setPreviousValue("");
+    setPreviousNumber(null);
+    setOperation(null);
+    setWaitingForOperand(false);
   };
 
   return (
@@ -48,7 +171,9 @@ export default function CalculadoraScreen() {
       {/* Display */}
       <View style={styles.displayContainer}>
         <Text style={styles.previousText}>{previousValue}</Text>
-        <Text style={styles.displayText}>{displayValue}</Text>
+        <Text style={styles.displayText} numberOfLines={1} adjustsFontSizeToFit>
+          {displayValue}
+        </Text>
       </View>
 
       {/* Botões */}
@@ -59,7 +184,7 @@ export default function CalculadoraScreen() {
             style={[styles.button, styles.functionButton]}
             onPress={() => handleClear()}
           >
-            <Text style={styles.buttonText}>AC</Text>
+            <Text style={styles.buttonText}>C</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.button, styles.functionButton]}
